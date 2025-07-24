@@ -1,0 +1,305 @@
+import React, { useState } from "react";
+import {
+  MessageCircle,
+  Trash2,
+  Users,
+  Download,
+  Eye,
+  EyeOff,
+  Clock,
+  CheckCircle,
+  MessageSquare,
+} from "lucide-react";
+import { EmployeeOrderData } from "../types";
+import {
+  generateWhatsAppMessage,
+  generateOrderReport,
+} from "../utils/whatsappUtils";
+import { formatDate } from "../utils/dateUtils";
+
+interface OrderSummaryProps {
+  orders: EmployeeOrderData[];
+  onRemoveOrder: (index: number) => void;
+  onClearAllOrders: () => void;
+}
+
+export const OrderSummary: React.FC<OrderSummaryProps> = ({
+  orders,
+  onRemoveOrder,
+  onClearAllOrders,
+}) => {
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
+
+  const totalGeneral = orders.reduce((sum, order) => sum + order.total, 0);
+  const totalItems = orders.reduce(
+    (sum, order) =>
+      sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
+    0
+  );
+
+  const toggleOrderExpansion = (orderId: string) => {
+    setExpandedOrders((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSendWhatsApp = () => {
+    const message = generateWhatsAppMessage(orders);
+    const whatsappUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(
+      message
+    )}`;
+    window.open(whatsappUrl, "_blank");
+  };
+
+  const handleDownloadReport = () => {
+    const report = generateOrderReport(orders);
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pedidos-${formatDate(new Date()).replace(/\s+/g, "-")}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClearAll = () => {
+    onClearAllOrders();
+    setShowConfirmClear(false);
+  };
+
+  if (orders.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+        <Users className="mx-auto text-gray-400 mb-4" size={64} />
+        <h3 className="text-xl font-semibold text-gray-600 mb-2">
+          Nenhum pedido realizado
+        </h3>
+        <p className="text-gray-500">
+          Os pedidos aparecerão aqui conforme forem sendo criados
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
+        <div className="flex items-center">
+          <Users className="mr-2 sm:mr-3 text-blue-600" size={20} />
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+              Resumo dos Pedidos
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-600">
+              {orders.length} pedido{orders.length !== 1 ? "s" : ""} •{" "}
+              {totalItems} ite{totalItems !== 1 ? "ns" : "m"}
+            </p>
+          </div>
+        </div>
+        <div className="text-center sm:text-right">
+          <p className="text-xs sm:text-sm font-medium text-gray-600">
+            Total Geral
+          </p>
+          <p className="text-2xl sm:text-3xl font-bold text-green-600">
+            R$ {totalGeneral.toFixed(2)}
+          </p>
+        </div>
+      </div>
+
+      {/* Orders List */}
+      <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6 max-h-80 sm:max-h-96 overflow-y-auto">
+        {orders.map((order, index) => {
+          const isExpanded = expandedOrders.has(order.id);
+          return (
+            <div
+              key={order.id}
+              className="border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200"
+            >
+              {/* Order Header */}
+              <div className="p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
+                  <div className="flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center mb-1 gap-1 sm:gap-2">
+                      <h3 className="font-bold text-gray-800 text-base sm:text-lg">
+                        {order.employeeName}
+                      </h3>
+                      <div className="flex flex-wrap gap-1 sm:gap-2">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                          {order.sector}
+                        </span>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            order.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : order.status === "confirmed"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {order.status === "pending"
+                            ? "Pendente"
+                            : order.status === "confirmed"
+                            ? "Confirmado"
+                            : "Cancelado"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center text-sm text-gray-500 mb-2">
+                      <Clock size={14} className="mr-1" />
+                      {order.timestamp.toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      <span className="mx-2">•</span>
+                      {order.items.length} ite
+                      {order.items.length !== 1 ? "ns" : "m"}
+                    </div>
+                    {order.notes && (
+                      <p className="text-sm text-gray-600 flex items-center">
+                        <MessageSquare size={14} className="mr-1" />
+                        {order.notes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xl font-bold text-green-600">
+                      R$ {order.total.toFixed(2)}
+                    </span>
+                    <button
+                      onClick={() => toggleOrderExpansion(order.id)}
+                      className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+                      title={isExpanded ? "Recolher" : "Expandir"}
+                    >
+                      {isExpanded ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                    <button
+                      onClick={() => onRemoveOrder(index)}
+                      className="p-2 text-red-500 hover:text-red-700 transition-colors"
+                      title="Remover pedido"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Order Items (Expanded) */}
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="space-y-2">
+                      {order.items.map((item, itemIndex) => (
+                        <div
+                          key={itemIndex}
+                          className="flex justify-between items-start p-2 bg-gray-50 rounded"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center">
+                              <span className="font-medium">
+                                {item.product.name}
+                              </span>
+                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                x{item.quantity}
+                              </span>
+                            </div>
+                            {item.notes && (
+                              <p className="text-xs text-gray-600 mt-1">
+                                Obs: {item.notes}
+                              </p>
+                            )}
+                          </div>
+                          <span className="font-semibold text-gray-700">
+                            R$ {(item.product.price * item.quantity).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="space-y-3">
+        {/* Primary Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={handleSendWhatsApp}
+            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl active:scale-95 sm:hover:scale-105 text-sm sm:text-base"
+          >
+            <MessageCircle className="mr-2" size={18} />
+            Enviar via WhatsApp
+          </button>
+
+          <button
+            onClick={handleDownloadReport}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl active:scale-95 sm:hover:scale-105 text-sm sm:text-base"
+          >
+            <Download className="mr-2" size={18} />
+            Baixar Relatório
+          </button>
+        </div>
+
+        {/* Secondary Actions */}
+        <div className="pt-3 border-t border-gray-200">
+          {!showConfirmClear ? (
+            <button
+              onClick={() => setShowConfirmClear(true)}
+              className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center text-sm sm:text-base"
+            >
+              <Trash2 className="mr-2" size={16} />
+              Limpar Todos os Pedidos
+            </button>
+          ) : (
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+              <button
+                onClick={handleClearAll}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center text-sm sm:text-base"
+              >
+                <CheckCircle className="mr-2" size={16} />
+                Confirmar Limpeza
+              </button>
+              <button
+                onClick={() => setShowConfirmClear(false)}
+                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 py-2 px-4 rounded-lg font-medium transition-colors text-sm sm:text-base"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-2xl font-bold text-blue-600">{orders.length}</p>
+            <p className="text-sm text-gray-600">Pedidos</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-purple-600">{totalItems}</p>
+            <p className="text-sm text-gray-600">Itens</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-green-600">
+              R$ {(totalGeneral / orders.length).toFixed(2)}
+            </p>
+            <p className="text-sm text-gray-600">Média</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
