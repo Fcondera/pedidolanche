@@ -1,14 +1,15 @@
 import React from "react";
 import {
   MessageCircle,
-  Download,
   Trash2,
   Clock,
   User,
   MapPin,
+  FileText,
 } from "lucide-react";
+import jsPDF from "jspdf";
 import { EmployeeOrderData } from "../types";
-import { formatCurrency, generateOrderReport } from "../utils/whatsappUtils";
+import { formatCurrency } from "../utils/whatsappUtils";
 
 interface OrderSummaryProps {
   orders: EmployeeOrderData[];
@@ -25,49 +26,154 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 }) => {
   const totalAmount = orders.reduce((sum, order) => sum + order.total, 0);
 
-  const formatWhatsAppMessage = (order: EmployeeOrderData) => {
-    const itemsList = order.items
-      .map(
-        (item) =>
-          `• ${item.product.name} (${item.quantity}x) - ${formatCurrency(
-            item.product.price * item.quantity
-          )}`
-      )
-      .join("\n");
+  const formatCompleteOrderMessage = () => {
+    const ordersList = orders
+      .map((order, index) => {
+        const itemsList = order.items
+          .map(
+            (item) =>
+              `   • ${item.product.name} (${item.quantity}x) - ${formatCurrency(
+                item.product.price * item.quantity
+              )}`
+          )
+          .join("\n");
 
-    return `*🍽️ PEDIDO DE LANCHE*\n\n*👤 Funcionário:* ${
-      order.employeeName
-    }\n*🏢 Setor:* ${sector}\n*📅 Data:* ${new Date(
-      order.timestamp
-    ).toLocaleDateString()}\n*⏰ Horário:* ${new Date(
-      order.timestamp
-    ).toLocaleTimeString()}\n\n*📋 ITENS:*\n${itemsList}\n\n*💰 TOTAL: ${formatCurrency(
-      order.total
+        return `*${index + 1}. ${
+          order.employeeName
+        }*\n${itemsList}\n   💰 Subtotal: ${formatCurrency(order.total)}`;
+      })
+      .join("\n\n");
+
+    return `*🍽️ PEDIDO COMPLETO DE LANCHE - HENNINGS*\n\n*🏢 Setor:* ${sector}\n*📅 Data:* ${new Date().toLocaleDateString()}\n*⏰ Horário:* ${new Date().toLocaleTimeString()}\n*👥 Total de Funcionários:* ${
+      orders.length
+    }\n\n*📋 PEDIDOS:*\n${ordersList}\n\n*💰 VALOR TOTAL GERAL: ${formatCurrency(
+      totalAmount
     )}*`;
   };
 
-  const sendWhatsAppMessage = (order: EmployeeOrderData) => {
-    const message = formatWhatsAppMessage(order);
+  const sendCompleteOrderWhatsApp = () => {
+    const message = formatCompleteOrderMessage();
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
     window.open(whatsappUrl, "_blank");
   };
 
-  const generateReport = () => {
+  const generatePDFReport = () => {
     if (orders.length === 0) return;
 
-    const reportContent = generateOrderReport(orders, sector);
-    const blob = new Blob([reportContent], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio-pedidos-${new Date()
-      .toLocaleDateString()
-      .replace(/\//g, "-")}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const pdf = new jsPDF();
+    const pageWidth = pdf.internal.pageSize.width;
+    const pageHeight = pdf.internal.pageSize.height;
+    let currentY = 20;
+
+    // Função para adicionar quebra de página se necessário
+    const checkPageBreak = (additionalHeight = 10) => {
+      if (currentY + additionalHeight > pageHeight - 20) {
+        pdf.addPage();
+        currentY = 20;
+      }
+    };
+
+    // Cabeçalho
+    pdf.setFontSize(20);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("RELATÓRIO DE PEDIDOS DE LANCHE", pageWidth / 2, currentY, {
+      align: "center",
+    });
+    currentY += 10;
+
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("HENNINGS", pageWidth / 2, currentY, { align: "center" });
+    currentY += 15;
+
+    // Informações gerais
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`Setor: ${sector}`, 20, currentY);
+    currentY += 8;
+    pdf.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, 20, currentY);
+    currentY += 8;
+    pdf.text(
+      `Horário: ${new Date().toLocaleTimeString("pt-BR")}`,
+      20,
+      currentY
+    );
+    currentY += 8;
+    pdf.text(`Total de Funcionários: ${orders.length}`, 20, currentY);
+    currentY += 15;
+
+    // Linha separadora
+    pdf.setDrawColor(200, 200, 200);
+    pdf.line(20, currentY, pageWidth - 20, currentY);
+    currentY += 10;
+
+    // Pedidos individuais
+    orders.forEach((order, index) => {
+      checkPageBreak(30);
+
+      // Nome do funcionário
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`${index + 1}. ${order.employeeName}`, 20, currentY);
+      currentY += 8;
+
+      // Data e hora do pedido
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(
+        `Data: ${new Date(order.timestamp).toLocaleDateString(
+          "pt-BR"
+        )} - ${new Date(order.timestamp).toLocaleTimeString("pt-BR")}`,
+        25,
+        currentY
+      );
+      currentY += 8;
+
+      // Items do pedido
+      pdf.setFontSize(11);
+      order.items.forEach((item) => {
+        checkPageBreak();
+        const itemText = `• ${item.product.name} (${
+          item.quantity
+        }x) - ${formatCurrency(item.product.price * item.quantity)}`;
+        pdf.text(itemText, 25, currentY);
+        currentY += 6;
+      });
+
+      // Subtotal
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`Subtotal: ${formatCurrency(order.total)}`, 25, currentY);
+      currentY += 15;
+
+      // Linha separadora entre pedidos
+      if (index < orders.length - 1) {
+        pdf.setDrawColor(230, 230, 230);
+        pdf.line(20, currentY - 5, pageWidth - 20, currentY - 5);
+      }
+    });
+
+    // Total geral
+    checkPageBreak(20);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.line(20, currentY, pageWidth - 20, currentY);
+    currentY += 10;
+
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    const totalAmount = orders.reduce((sum, order) => sum + order.total, 0);
+    pdf.text(
+      `TOTAL GERAL: ${formatCurrency(totalAmount)}`,
+      pageWidth / 2,
+      currentY,
+      { align: "center" }
+    );
+
+    // Salvar o PDF
+    const fileName = `relatorio-pedidos-${new Date()
+      .toLocaleDateString("pt-BR")
+      .replace(/\//g, "-")}.pdf`;
+    pdf.save(fileName);
   };
 
   if (orders.length === 0) {
@@ -99,11 +205,11 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         </h2>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button
-            onClick={generateReport}
-            className="flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium"
+            onClick={generatePDFReport}
+            className="flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm font-medium"
           >
-            <Download className="mr-1 sm:mr-2" size={14} />
-            Relatório
+            <FileText className="mr-1 sm:mr-2" size={14} />
+            Relatório PDF
           </button>
           <button
             onClick={onClearAllOrders}
@@ -202,15 +308,6 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
                   </div>
                 ))}
               </div>
-
-              {/* WhatsApp Button */}
-              <button
-                onClick={() => sendWhatsAppMessage(order)}
-                className="w-full flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium"
-              >
-                <MessageCircle className="mr-2" size={14} />
-                Enviar via WhatsApp
-              </button>
             </div>
           );
         })}
@@ -218,7 +315,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
       {/* Total Summary */}
       <div className="border-t border-gray-200 pt-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <div>
             <p className="text-sm sm:text-base font-medium text-gray-700">
               Total de Pedidos:{" "}
@@ -237,6 +334,15 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Finalizar Pedido Completo */}
+        <button
+          onClick={sendCompleteOrderWhatsApp}
+          className="w-full flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium shadow-md"
+        >
+          <MessageCircle className="mr-2" size={18} />
+          Finalizar Pedido via WhatsApp
+        </button>
       </div>
     </div>
   );
