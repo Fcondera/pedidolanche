@@ -7,46 +7,51 @@ export const formatCurrency = (value: number): string => {
 
 export const generateWhatsAppMessage = (
   orders: EmployeeOrderData[],
-  sector: string
+  sector: string,
+  totalChangeForCoca: number = 0,
+  possibleCocas: number = 0
 ): string => {
   const today = new Date();
   const formattedDate = formatDate(today);
-  const dailyLimit = getDailyLimit();
+  const isSaturday = today.getDay() === 6;
 
   let message = `🍽️ *PEDIDO DE LANCHE*\n`;
   message += `📅 Data: ${formattedDate}\n`;
   message += `🏢 Setor: ${sector}\n`;
-  message += `👥 Total de colaboradores: ${orders.length}\n\n`;
+  message += `👥 Total de colaboradores: ${orders.length}\n`;
 
-  message += `📋 *PEDIDOS:*\n`;
-  message += `${"=".repeat(30)}\n\n`;
+  // Informações especiais para sábado
+  if (isSaturday && totalChangeForCoca > 0) {
+    message += `\n🥤 *SISTEMA DE TROCO - SÁBADO:*\n`;
+    message += `💰 Troco disponível: R$ ${totalChangeForCoca
+      .toFixed(2)
+      .replace(".", ",")}\n`;
+    message += `🥤 Cocas possíveis: ${possibleCocas} unidades\n`;
+  }
 
-  orders.forEach((order, index) => {
-    message += `👤 *${order.employeeName}*\n`;
+  message += `\n📋 *RESUMO DOS ITENS:*\n`;
 
+  // Agregar todos os itens sem mostrar nomes ou preços
+  const itemSummary: Record<string, number> = {};
+
+  orders.forEach((order) => {
     order.items.forEach((item) => {
-      const itemTotal = (item.product.price * item.quantity).toFixed(2);
-      message += `   • ${item.product.name} x${item.quantity} - R$ ${itemTotal}\n`;
-      if (item.notes) {
-        message += `     📝 ${item.notes}\n`;
+      const itemName = item.product.name;
+      if (itemSummary[itemName]) {
+        itemSummary[itemName] += item.quantity;
+      } else {
+        itemSummary[itemName] = item.quantity;
       }
     });
-
-    if (order.notes) {
-      message += `   💬 Obs: ${order.notes}\n`;
-    }
-
-    const withinLimit = order.total <= dailyLimit;
-    message += `   💰 *Total: R$ ${order.total.toFixed(2)}* ${
-      withinLimit ? "✅" : "❌"
-    }\n`;
-
-    if (index < orders.length - 1) {
-      message += `\n${"-".repeat(25)}\n\n`;
-    }
   });
 
-  const totalGeneral = orders.reduce((sum, order) => sum + order.total, 0);
+  message += `📋 *ITENS SOLICITADOS:*\n`;
+  message += `${"=".repeat(30)}\n\n`;
+
+  Object.entries(itemSummary).forEach(([itemName, quantity]) => {
+    message += `• ${itemName} x${quantity}\n`;
+  });
+
   const totalItems = orders.reduce(
     (sum, order) =>
       sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
@@ -54,13 +59,9 @@ export const generateWhatsAppMessage = (
   );
 
   message += `\n${"=".repeat(30)}\n`;
-  message += `📊 *RESUMO FINAL:*\n`;
+  message += `📊 *RESUMO:*\n`;
   message += `• Total de itens: ${totalItems}\n`;
-  message += `• Valor total: *R$ ${totalGeneral.toFixed(2)}*\n`;
-  message += `• Limite diário: R$ ${dailyLimit.toFixed(2)}\n`;
-  message += `• Média por pessoa: R$ ${(totalGeneral / orders.length).toFixed(
-    2
-  )}\n\n`;
+  message += `• Total de pessoas: ${orders.length}\n\n`;
 
   message += `⏰ Pedido gerado em: ${today.toLocaleString("pt-BR")}\n`;
   message += `🤖 Sistema de Pedidos de Lanche`;

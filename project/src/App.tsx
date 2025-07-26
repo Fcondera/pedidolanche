@@ -12,6 +12,9 @@ function App() {
     "lunch-orders",
     { sector: "", orders: [] }
   );
+  const [orderStatus, setOrderStatus] = useState<
+    "active" | "finalized" | "sent"
+  >("active");
   const [showStats, setShowStats] = useState(false);
 
   // Clear orders from previous days
@@ -119,6 +122,7 @@ function App() {
               <OrderSummary
                 orders={dailyOrderData.orders}
                 sector={dailyOrderData.sector}
+                status={orderStatus}
                 onRemoveOrder={handleRemoveOrder}
                 onClearAllOrders={handleClearAllOrders}
               />

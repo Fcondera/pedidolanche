@@ -21,6 +21,10 @@ export interface EmployeeOrderData {
   timestamp: Date;
   status: "pending" | "confirmed" | "cancelled";
   notes?: string;
+  // Campos para sistema de troco do sábado
+  dailyLimit: number; // Limite de R$ 25 por colaborador
+  change: number; // Troco disponível
+  canBuyCoca: boolean; // Se o troco dá para coca
 }
 
 export interface OrderSession {

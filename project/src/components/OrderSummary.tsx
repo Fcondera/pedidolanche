@@ -1,15 +1,18 @@
-import React from "react";
-import {
-  MessageCircle,
-  Trash2,
-  Clock,
-  User,
-  MapPin,
-  FileText,
-} from "lucide-react";
-import jsPDF from "jspdf";
+import React, { useState } from "react";
 import { EmployeeOrderData } from "../types";
-import { formatCurrency } from "../utils/whatsappUtils";
+import { Trash2, MessageCircle, Download, Mail, X } from "lucide-react";
+import { generateWhatsAppMessage } from "../utils/whatsappUtils";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { formatDate } from "../utils/dateUtils";
+import { sendEmail } from "../utils/emailConfig";
+
+// Extend jsPDF with autoTable - corrigido
+declare module "jspdf" {
+  interface jsPDF {
+    autoTable: typeof autoTable;
+  }
+}
 
 interface OrderSummaryProps {
   orders: EmployeeOrderData[];
@@ -24,326 +27,665 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   onRemoveOrder,
   onClearAllOrders,
 }) => {
-  const totalAmount = orders.reduce((sum, order) => sum + order.total, 0);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [email, setEmail] = useState("alexfj@hennings.com.br");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const formatCompleteOrderMessage = () => {
-    const ordersList = orders
-      .map((order, index) => {
-        const itemsList = order.items
-          .map(
-            (item) =>
-              `   • ${item.product.name} (${item.quantity}x) - ${formatCurrency(
-                item.product.price * item.quantity
-              )}`
-          )
-          .join("\n");
+  // Configurações do sistema de troco
+  const WEEKDAY_LIMIT = 15.0; // R$ 15 por colaborador nos dias de semana
+  const SATURDAY_LIMIT = 25.0; // R$ 25 por colaborador no sábado
+  const COCA_PRICE = 13.0; // Preço de uma coca
 
-        return `*${index + 1}. ${
-          order.employeeName
-        }*\n${itemsList}\n   💰 Subtotal: ${formatCurrency(order.total)}`;
-      })
-      .join("\n\n");
-
-    return `*🍽️ PEDIDO COMPLETO DE LANCHE - HENNINGS*\n\n*🏢 Setor:* ${sector}\n*📅 Data:* ${new Date().toLocaleDateString()}\n*⏰ Horário:* ${new Date().toLocaleTimeString()}\n*👥 Total de Funcionários:* ${
-      orders.length
-    }\n\n*📋 PEDIDOS:*\n${ordersList}\n\n*💰 VALOR TOTAL GERAL: ${formatCurrency(
-      totalAmount
-    )}*`;
+  // Função para verificar se é sábado
+  const isSaturday = () => {
+    const today = new Date();
+    return today.getDay() === 6; // 6 = sábado
   };
 
-  const sendCompleteOrderWhatsApp = () => {
-    const message = formatCompleteOrderMessage();
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
-    window.open(whatsappUrl, "_blank");
+  // Função para obter o limite do dia
+  const getDailyLimit = () => {
+    return isSaturday() ? SATURDAY_LIMIT : WEEKDAY_LIMIT;
   };
 
-  const generatePDFReport = () => {
-    if (orders.length === 0) return;
+  // Função para calcular troco e status da coca
+  const calculateEmployeeData = (order: EmployeeOrderData) => {
+    const dailyLimit = getDailyLimit();
 
-    const pdf = new jsPDF();
-    const pageWidth = pdf.internal.pageSize.width;
-    const pageHeight = pdf.internal.pageSize.height;
-    let currentY = 20;
-
-    // Função para adicionar quebra de página se necessário
-    const checkPageBreak = (additionalHeight = 10) => {
-      if (currentY + additionalHeight > pageHeight - 20) {
-        pdf.addPage();
-        currentY = 20;
-      }
-    };
-
-    // Cabeçalho
-    pdf.setFontSize(20);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("RELATÓRIO DE PEDIDOS DE LANCHE", pageWidth / 2, currentY, {
-      align: "center",
-    });
-    currentY += 10;
-
-    pdf.setFontSize(16);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("HENNINGS", pageWidth / 2, currentY, { align: "center" });
-    currentY += 15;
-
-    // Informações gerais
-    pdf.setFontSize(12);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Setor: ${sector}`, 20, currentY);
-    currentY += 8;
-    pdf.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, 20, currentY);
-    currentY += 8;
-    pdf.text(
-      `Horário: ${new Date().toLocaleTimeString("pt-BR")}`,
-      20,
-      currentY
+    const orderTotal = order.items.reduce(
+      (sum, item) => sum + item.product.price * item.quantity,
+      0
     );
-    currentY += 8;
-    pdf.text(`Total de Funcionários: ${orders.length}`, 20, currentY);
-    currentY += 15;
 
-    // Linha separadora
-    pdf.setDrawColor(200, 200, 200);
-    pdf.line(20, currentY, pageWidth - 20, currentY);
-    currentY += 10;
+    const change = dailyLimit - orderTotal;
+    const canBuyCoca = change >= COCA_PRICE;
 
-    // Pedidos individuais
-    orders.forEach((order, index) => {
-      checkPageBreak(30);
+    return {
+      ...order,
+      dailyLimit: dailyLimit,
+      change: Math.max(0, change), // Não pode ser negativo
+      canBuyCoca: canBuyCoca && change > 0,
+    };
+  };
 
-      // Nome do funcionário
-      pdf.setFontSize(14);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(`${index + 1}. ${order.employeeName}`, 20, currentY);
-      currentY += 8;
+  // Recalcular dados dos pedidos com troco
+  const ordersWithChange = orders.map(calculateEmployeeData);
 
-      // Data e hora do pedido
-      pdf.setFontSize(10);
-      pdf.setFont("helvetica", "normal");
-      pdf.text(
-        `Data: ${new Date(order.timestamp).toLocaleDateString(
-          "pt-BR"
-        )} - ${new Date(order.timestamp).toLocaleTimeString("pt-BR")}`,
-        25,
-        currentY
-      );
-      currentY += 8;
+  // Calcular troco total de todos os pedidos
+  const totalChange = ordersWithChange.reduce((sum, order) => {
+    return sum + order.change;
+  }, 0);
 
-      // Items do pedido
-      pdf.setFontSize(11);
+  // Quantas cocas podem ser compradas com o troco total
+  const possibleCocas = Math.floor(totalChange / COCA_PRICE);
+
+  // Quanto sobra após comprar as cocas
+  const remainingChange = totalChange - possibleCocas * COCA_PRICE;
+
+  const total = ordersWithChange.reduce(
+    (sum, order) =>
+      sum +
+      order.items.reduce(
+        (orderSum, item) => orderSum + item.product.price * item.quantity,
+        0
+      ),
+    0
+  );
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+
+    // Header
+    doc.setFontSize(18);
+    doc.text("Relatório de Pedidos - Hennings", 20, 20);
+
+    // Date and Sector
+    doc.setFontSize(11);
+    doc.text(`Data: ${formatDate(new Date())}`, 20, 32);
+    if (sector) {
+      doc.text(`Setor: ${sector}`, 20, 40);
+    }
+
+    // Table data
+    const tableData: Array<Array<string>> = [];
+
+    ordersWithChange.forEach((order) => {
+      // Add employee header with consolidated info
+      tableData.push([
+        `${order.employeeName} - ${
+          order.status === "pending"
+            ? "Pendente"
+            : order.status === "confirmed"
+            ? "Confirmado"
+            : "Cancelado"
+        }`,
+        "",
+        "",
+        "",
+      ]);
+
+      // Add items directly
       order.items.forEach((item) => {
-        checkPageBreak();
-        const itemText = `• ${item.product.name} (${
-          item.quantity
-        }x) - ${formatCurrency(item.product.price * item.quantity)}`;
-        pdf.text(itemText, 25, currentY);
-        currentY += 6;
+        tableData.push([
+          `  ${item.product.name}`,
+          `R$ ${item.product.price.toFixed(2)}`,
+          item.quantity.toString(),
+          `R$ ${(item.product.price * item.quantity).toFixed(2)}`,
+        ]);
       });
 
-      // Subtotal
-      pdf.setFont("helvetica", "bold");
-      pdf.text(`Subtotal: ${formatCurrency(order.total)}`, 25, currentY);
-      currentY += 15;
+      // Add employee total
+      const employeeTotal = order.items.reduce(
+        (sum, item) => sum + item.product.price * item.quantity,
+        0
+      );
+      tableData.push([
+        `  Subtotal: ${order.employeeName}`,
+        "",
+        "",
+        `R$ ${employeeTotal.toFixed(2)}`,
+      ]);
 
-      // Linha separadora entre pedidos
-      if (index < orders.length - 1) {
-        pdf.setDrawColor(230, 230, 230);
-        pdf.line(20, currentY - 5, pageWidth - 20, currentY - 5);
-      }
+      // Add minimal spacing
+      tableData.push(["", "", "", ""]);
     });
 
-    // Total geral
-    checkPageBreak(20);
-    pdf.setDrawColor(0, 0, 0);
-    pdf.line(20, currentY, pageWidth - 20, currentY);
-    currentY += 10;
+    // Remove last empty row
+    if (tableData.length > 0) {
+      tableData.pop();
+    }
 
-    pdf.setFontSize(16);
-    pdf.setFont("helvetica", "bold");
-    const totalAmount = orders.reduce((sum, order) => sum + order.total, 0);
-    pdf.text(
-      `TOTAL GERAL: ${formatCurrency(totalAmount)}`,
-      pageWidth / 2,
-      currentY,
-      { align: "center" }
+    // Add total
+    tableData.push(["TOTAL GERAL", "", "", `R$ ${total.toFixed(2)}`]);
+
+    autoTable(doc, {
+      head: [["Funcionário / Item", "Preço Unit.", "Qtd", "Subtotal"]],
+      body: tableData,
+      startY: sector ? 48 : 40,
+      styles: {
+        fontSize: 9,
+        cellPadding: 2,
+        lineColor: [200, 200, 200],
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        fillColor: [41, 128, 185],
+        textColor: 255,
+        fontStyle: "bold",
+        fontSize: 10,
+      },
+      columnStyles: {
+        0: { cellWidth: 80, halign: "left" },
+        1: { cellWidth: 30, halign: "right" },
+        2: { cellWidth: 20, halign: "center" },
+        3: { cellWidth: 35, halign: "right" },
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      bodyStyles: {
+        fontSize: 9,
+      },
+      didParseCell: function (data) {
+        // Style employee headers
+        const cellText = data.cell.text[0] || "";
+        if (cellText.includes(" - ") && !cellText.startsWith("  ")) {
+          data.cell.styles.fillColor = [230, 230, 230];
+          data.cell.styles.fontStyle = "bold";
+        }
+        // Style subtotals
+        if (cellText.startsWith("  Subtotal:")) {
+          data.cell.styles.fillColor = [240, 240, 240];
+          data.cell.styles.fontStyle = "bold";
+        }
+        // Style total
+        if (cellText === "TOTAL GERAL") {
+          data.cell.styles.fillColor = [200, 200, 200];
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 11;
+        }
+      },
+    });
+
+    return doc;
+  };
+
+  const generatePDFAsBase64 = () => {
+    const doc = generatePDF();
+    return doc.output("datauristring").split(",")[1]; // Remove data:application/pdf;filename=generated.pdf;base64,
+  };
+
+  // Função para detectar se é iOS
+  const isIOS = () => {
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
     );
+  };
 
-    // Salvar o PDF
-    const fileName = `relatorio-pedidos-${new Date()
-      .toLocaleDateString("pt-BR")
-      .replace(/\//g, "-")}.pdf`;
-    pdf.save(fileName);
+  // Função para detectar Safari
+  const isSafari = () => {
+    return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  };
+
+  const downloadPDF = () => {
+    try {
+      const doc = generatePDF();
+
+      const fileName = `pedidos_hennings_${formatDate(new Date()).replace(
+        /\//g,
+        "-"
+      )}.pdf`;
+      console.log("💾 Salvando arquivo:", fileName);
+
+      // Para iOS, usar uma abordagem específica
+      if (isIOS()) {
+        const pdfOutput = doc.output("blob");
+        const blobUrl = URL.createObjectURL(pdfOutput);
+
+        if (isSafari()) {
+          // No Safari iOS, abrir em nova aba é mais confiável
+          const newWindow = window.open("", "_blank");
+          if (newWindow) {
+            newWindow.document.write(`
+              <html>
+                <head>
+                  <title>${fileName}</title>
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                    body { 
+                      margin: 0; 
+                      padding: 20px; 
+                      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                      text-align: center;
+                      background: #f5f5f5;
+                    }
+                    .container {
+                      max-width: 400px;
+                      margin: 0 auto;
+                      background: white;
+                      padding: 30px;
+                      border-radius: 12px;
+                      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    }
+                    .icon { font-size: 48px; margin-bottom: 20px; }
+                    h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+                    p { color: #666; line-height: 1.5; margin-bottom: 15px; }
+                    .steps { text-align: left; margin: 20px 0; }
+                    .step { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 6px; }
+                    .download-btn {
+                      display: inline-block;
+                      background: #007AFF;
+                      color: white;
+                      padding: 12px 24px;
+                      text-decoration: none;
+                      border-radius: 8px;
+                      margin: 20px 0;
+                      font-weight: 600;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="icon">📄</div>
+                    <h1>PDF Pronto!</h1>
+                    <p>Seu relatório foi gerado com sucesso.</p>
+                    
+                    <a href="${blobUrl}" download="${fileName}" class="download-btn">
+                      📥 Baixar PDF
+                    </a>
+                    
+                    <div class="steps">
+                      <div class="step">
+                        <strong>1.</strong> Toque no botão "Baixar PDF" acima
+                      </div>
+                      <div class="step">
+                        <strong>2.</strong> Toque no ícone de compartilhar <span style="font-size: 18px;">⎋</span>
+                      </div>
+                      <div class="step">
+                        <strong>3.</strong> Selecione "Salvar em Arquivos" ou "Adicionar ao Drive"
+                      </div>
+                    </div>
+                    
+                    <p style="font-size: 14px; color: #888;">
+                      O arquivo será salvo como: ${fileName}
+                    </p>
+                  </div>
+                </body>
+              </html>
+            `);
+            newWindow.document.close();
+          } else {
+            // Fallback se não conseguir abrir nova janela
+            alert(
+              "Para baixar o PDF:\n1. Toque no link que aparecerá\n2. Use o botão compartilhar para salvar"
+            );
+            window.location.href = blobUrl;
+          }
+        } else {
+          // Para outros navegadores no iOS
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = fileName;
+          link.style.display = "none";
+
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          setTimeout(() => {
+            alert(
+              'Para salvar no iPhone:\n1. Toque no ícone de compartilhar\n2. Selecione "Salvar em Arquivos"'
+            );
+          }, 500);
+        }
+
+        // Limpar o blob URL após um tempo
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 30000);
+      } else {
+        // Para outros dispositivos, usar o método padrão
+        doc.save(fileName);
+      }
+    } catch (error) {
+      alert("Erro ao gerar PDF: " + (error as Error).message);
+    }
+  };
+  const sendEmailWithPDF = async () => {
+    if (!email.trim()) {
+      alert("Por favor, insira um email válido.");
+      return;
+    }
+
+    // Validar formato do email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      alert(
+        "Por favor, insira um email com formato válido (exemplo@dominio.com)."
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      console.log("📧 Preparando envio de email para:", email);
+      console.log("� Dados dos pedidos para email:", orders.length, "pedidos");
+      console.log("💰 Total para email:", total);
+
+      console.log("�📄 Gerando PDF para email...");
+      const pdfBase64 = generatePDFAsBase64();
+      console.log("✅ PDF gerado! Tamanho base64:", pdfBase64?.length || 0);
+
+      const fileName = `pedidos_hennings_${formatDate(new Date()).replace(
+        /\//g,
+        "-"
+      )}.pdf`;
+
+      const templateParams = {
+        to_email: email.trim(),
+        subject: "Relatório de Pedidos - Hennings",
+        sector: sector,
+        totalValue: `R$ ${total.toFixed(2)}`,
+        orderCount: ordersWithChange.length,
+        message: `Relatório de pedidos gerado em ${formatDate(
+          new Date()
+        )}.\n\nTotal geral: R$ ${total.toFixed(
+          2
+        )}\n\nTotal de itens: ${ordersWithChange.reduce(
+          (sum, order) =>
+            sum +
+            order.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
+          0
+        )}\n\nTotal de colaboradores: ${
+          ordersWithChange.length
+        }\n\nRelatório em anexo.`,
+        attachment: pdfBase64,
+        filename: fileName,
+      };
+
+      const response = await sendEmail(templateParams);
+
+      // Check if response indicates fallback mode (without attachment)
+      if (response && "fallback" in response && response.fallback) {
+        alert(
+          '✅ Email enviado com sucesso!\n\n⚠️ O PDF não pôde ser anexado devido ao tamanho, mas você pode baixá-lo pelo botão "PDF".'
+        );
+      } else {
+        alert("✅ Email enviado com sucesso!");
+      }
+
+      setShowEmailModal(false);
+    } catch (error) {
+      let errorMessage = "Erro ao enviar email. ";
+
+      if (error && typeof error === "object") {
+        const errorObj = error as {
+          status?: number;
+          text?: string;
+          message?: string;
+        };
+
+        if (errorObj.status === 400) {
+          errorMessage += "Verifique se o email está correto.";
+        } else if (errorObj.status === 403) {
+          errorMessage += "Erro de autenticação no serviço de email.";
+        } else if (errorObj.status === 413) {
+          errorMessage += "Email muito grande para ser enviado.";
+        } else if (errorObj.message && errorObj.message.includes("inválido")) {
+          errorMessage += "Formato de email inválido.";
+        } else {
+          errorMessage += "Tente novamente em alguns minutos.";
+        }
+      } else {
+        errorMessage += "Verifique sua conexão e tente novamente.";
+      }
+
+      alert(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendWhatsAppMessage = () => {
+    const message = generateWhatsAppMessage(
+      ordersWithChange,
+      sector,
+      totalChange,
+      possibleCocas
+    );
+    const whatsappURL = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+      message
+    )}`;
+    window.open(whatsappURL, "_blank");
   };
 
   if (orders.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 text-center">
-          📋 Resumo dos Pedidos
-        </h2>
-        <div className="text-center py-8 sm:py-12">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <Clock className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
-          </div>
-          <p className="text-gray-600 text-sm sm:text-base mb-2">
-            Nenhum pedido realizado ainda
-          </p>
-          <p className="text-gray-500 text-xs sm:text-sm">
-            Os pedidos aparecerão aqui conforme forem feitos
-          </p>
-        </div>
+      <div className="bg-white rounded-lg shadow-md p-6 text-center">
+        <p className="text-gray-500">Nenhum pedido foi feito ainda.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-3">
-        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-          📋 Resumo dos Pedidos ({orders.length})
-        </h2>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Resumo dos Pedidos</h2>
+        <div className="flex gap-2">
           <button
-            onClick={generatePDFReport}
-            className="flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm font-medium"
+            onClick={downloadPDF}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors relative group"
+            title={
+              isIOS()
+                ? "No iPhone: após abrir, toque em compartilhar → Salvar em Arquivos"
+                : "Baixar PDF"
+            }
           >
-            <FileText className="mr-1 sm:mr-2" size={14} />
-            Relatório PDF
+            <Download size={18} />
+            PDF
+            {isIOS() && (
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                No iPhone: toque para abrir → Compartilhar → Salvar
+              </div>
+            )}
+          </button>
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Mail size={18} />
+            Email
           </button>
           <button
             onClick={onClearAllOrders}
-            className="flex items-center justify-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs sm:text-sm font-medium"
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
           >
-            <Trash2 className="mr-1 sm:mr-2" size={14} />
-            Limpar Tudo
+            <Trash2 size={18} />
+            Limpar
           </button>
         </div>
       </div>
 
-      {/* Informações Gerais do Pedido */}
-      {sector && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Informações Gerais do Pedido
-          </h3>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm text-blue-700">
-              <span className="font-medium">Setor:</span>
-              <span className="bg-blue-200 px-2 py-1 rounded font-semibold">
-                {sector}
-              </span>
+      {/* Estatísticas do sistema de troco - todos os dias */}
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+        <h3 className="text-lg font-bold text-green-800 mb-2">
+          🥤 Sistema de Troco - {isSaturday() ? "Sábado" : "Dia de Semana"}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="bg-white p-3 rounded-lg">
+            <span className="font-medium text-gray-700">
+              Limite por pessoa:
+            </span>
+            <div className="text-xl font-bold text-green-600">
+              R$ {getDailyLimit().toFixed(2)}
             </div>
-            <div className="flex items-center gap-2 text-sm text-blue-700">
-              <span className="font-medium">Data:</span>
-              <span>{new Date().toLocaleDateString("pt-BR")}</span>
+          </div>
+          <div className="bg-white p-3 rounded-lg">
+            <span className="font-medium text-gray-700">Troco total:</span>
+            <div className="text-xl font-bold text-blue-600">
+              R$ {totalChange.toFixed(2)}
+            </div>
+          </div>
+          <div className="bg-white p-3 rounded-lg">
+            <span className="font-medium text-gray-700">Cocas possíveis:</span>
+            <div className="text-xl font-bold text-orange-600">
+              {possibleCocas} unidades
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Sobra: R$ {remainingChange.toFixed(2)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        {ordersWithChange.map((order, orderIndex) => (
+          <div key={order.id} className="border-l-4 border-l-blue-500 pl-4">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">
+                  {order.employeeName}
+                </h3>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-sm text-gray-600">Status:</span>
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full ${
+                      order.status === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : order.status === "confirmed"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {order.status === "pending"
+                      ? "Pendente"
+                      : order.status === "confirmed"
+                      ? "Confirmado"
+                      : "Cancelado"}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => onRemoveOrder(orderIndex)}
+                className="text-red-600 hover:text-red-800 transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {order.items.map((item, itemIndex) => (
+                <div
+                  key={itemIndex}
+                  className="flex justify-between items-center bg-gray-50 p-3 rounded-lg"
+                >
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-800">
+                      {item.product.name}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      R$ {item.product.price.toFixed(2)} × {item.quantity}
+                    </p>
+                    {item.notes && (
+                      <p className="text-xs text-gray-500 mt-1">{item.notes}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-gray-800">
+                      R$ {(item.product.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-gray-600">Subtotal:</span>
+                <span className="font-bold text-gray-800">
+                  R${" "}
+                  {order.items
+                    .reduce(
+                      (sum, item) => sum + item.product.price * item.quantity,
+                      0
+                    )
+                    .toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 pt-6 border-t-2 border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-xl font-bold text-gray-800">Total Geral:</span>
+          <span className="text-2xl font-bold text-green-600">
+            R$ {total.toFixed(2)}
+          </span>
+        </div>
+
+        <button
+          onClick={sendWhatsAppMessage}
+          className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors text-lg font-semibold"
+        >
+          <MessageCircle size={24} />
+          Finalizar Pedido no WhatsApp
+        </button>
+      </div>
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                Enviar Relatório por Email
+              </h3>
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Email de destino:
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="exemplo@email.com"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={sendEmailWithPDF}
+                disabled={isLoading}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isLoading ? "Enviando..." : "Enviar"}
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <div className="space-y-3 sm:space-y-4 mb-4 sm:mb-6 max-h-96 sm:max-h-[500px] overflow-y-auto">
-        {orders.map((order, index) => {
-          return (
-            <div
-              key={index}
-              className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow bg-gray-50"
-            >
-              {/* Order Header */}
-              <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                    <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
-                      {order.employeeName}
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{sector}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                    <Clock className="w-3 h-3 flex-shrink-0" />
-                    <span>{new Date(order.timestamp).toLocaleString()}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="font-bold text-green-600 text-sm sm:text-base">
-                    {formatCurrency(order.total)}
-                  </span>
-                  <button
-                    onClick={() => onRemoveOrder(index)}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Remover pedido"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Order Items */}
-              <div className="space-y-1.5 mb-3">
-                {order.items.map((item, itemIndex) => (
-                  <div
-                    key={itemIndex}
-                    className={`flex justify-between items-center py-1 px-2 rounded text-xs sm:text-sm border-l-4 ${
-                      item.product.category === "drink"
-                        ? "bg-red-50 border-l-red-400"
-                        : "bg-green-50 border-l-green-400"
-                    }`}
-                  >
-                    <span className="flex-1 min-w-0 mr-2 truncate">
-                      {item.quantity}x {item.product.name}
-                    </span>
-                    <span
-                      className={`font-medium flex-shrink-0 ${
-                        item.product.category === "drink"
-                          ? "text-red-700"
-                          : "text-green-700"
-                      }`}
-                    >
-                      {formatCurrency(item.product.price * item.quantity)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Total Summary */}
-      <div className="border-t border-gray-200 pt-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <div>
-            <p className="text-sm sm:text-base font-medium text-gray-700">
-              Total de Pedidos:{" "}
-              <span className="font-bold">{orders.length}</span>
-            </p>
-            <p className="text-xs sm:text-sm text-gray-600">
-              Última atualização: {new Date().toLocaleTimeString()}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-              {formatCurrency(totalAmount)}
-            </p>
-            <p className="text-xs sm:text-sm text-gray-600">
-              Valor Total Geral
-            </p>
-          </div>
-        </div>
-
-        {/* Finalizar Pedido Completo */}
-        <button
-          onClick={sendCompleteOrderWhatsApp}
-          className="w-full flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium shadow-md"
-        >
-          <MessageCircle className="mr-2" size={18} />
-          Finalizar Pedido via WhatsApp
-        </button>
-      </div>
     </div>
   );
 };

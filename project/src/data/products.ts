@@ -22,7 +22,7 @@ export const PRODUCTS: Product[] = [
     name: "Orelha",
     price: 3.0,
     category: "food",
-    description: "Orelha de porco",
+    description: "Orelha de gato",
     available: true,
   },
   {
@@ -91,11 +91,26 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "12",
-    name: "Pão com salada+presunto ou calabresa ou lombinho",
+    name: "Pão com salada e presunto",
     price: 7.0,
     category: "food",
-    description:
-      "Pão francês com salada e opção de presunto, calabresa ou lombinho",
+    description: "Pão francês com salada e presunto",
+    available: true,
+  },
+  {
+    id: "12b",
+    name: "Pão com salada e calabresa",
+    price: 7.0,
+    category: "food",
+    description: "Pão francês com salada e calabresa",
+    available: true,
+  },
+  {
+    id: "12c",
+    name: "Pão com salada e lombinho",
+    price: 7.0,
+    category: "food",
+    description: "Pão francês com salada e lombinho",
     available: true,
   },
   {
@@ -116,10 +131,18 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "15",
-    name: "Nega maluca ou bolo de cenoura",
+    name: "Nega maluca",
     price: 5.5,
     category: "food",
-    description: "Opção de nega maluca ou bolo de cenoura",
+    description: "Bolo nega maluca",
+    available: true,
+  },
+  {
+    id: "15b",
+    name: "Bolo de cenoura",
+    price: 5.5,
+    category: "food",
+    description: "Bolo de cenoura com cobertura",
     available: true,
   },
   {
