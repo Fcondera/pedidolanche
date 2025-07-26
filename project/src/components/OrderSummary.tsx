@@ -447,12 +447,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   };
 
   const sendWhatsAppMessage = () => {
-    const message = generateWhatsAppMessage(
-      ordersWithChange,
-      sector,
-      totalChange,
-      possibleCocas
-    );
+    const message = generateWhatsAppMessage(ordersWithChange, sector);
     const whatsappURL = `https://api.whatsapp.com/send?text=${encodeURIComponent(
       message
     )}`;
@@ -468,13 +463,13 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Resumo dos Pedidos</h2>
-        <div className="flex gap-2">
+    <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Resumo dos Pedidos</h2>
+        <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={downloadPDF}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors relative group"
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors relative group"
             title={
               isIOS()
                 ? "No iPhone: após abrir, toque em compartilhar → Salvar em Arquivos"
@@ -484,21 +479,21 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
             <Download size={18} />
             PDF
             {isIOS() && (
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                 No iPhone: toque para abrir → Compartilhar → Salvar
               </div>
             )}
           </button>
           <button
             onClick={() => setShowEmailModal(true)}
-            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
           >
             <Mail size={18} />
             Email
           </button>
           <button
             onClick={onClearAllOrders}
-            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            className="flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
           >
             <Trash2 size={18} />
             Limpar
@@ -507,28 +502,28 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
       </div>
 
       {/* Estatísticas do sistema de troco - todos os dias */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-        <h3 className="text-lg font-bold text-green-800 mb-2">
+      <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 mb-6">
+        <h3 className="text-base sm:text-lg font-bold text-green-800 mb-3">
           🥤 Sistema de Troco - {isSaturday() ? "Sábado" : "Dia de Semana"}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 text-sm">
           <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-gray-700 block mb-1">
               Limite por pessoa:
             </span>
-            <div className="text-xl font-bold text-green-600">
+            <div className="text-lg sm:text-xl font-bold text-green-600">
               R$ {getDailyLimit().toFixed(2)}
             </div>
           </div>
           <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-700">Troco total:</span>
-            <div className="text-xl font-bold text-blue-600">
+            <span className="font-medium text-gray-700 block mb-1">Troco total:</span>
+            <div className="text-lg sm:text-xl font-bold text-blue-600">
               R$ {totalChange.toFixed(2)}
             </div>
           </div>
-          <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-700">Cocas possíveis:</span>
-            <div className="text-xl font-bold text-orange-600">
+          <div className="bg-white p-3 rounded-lg sm:col-span-2 lg:col-span-1">
+            <span className="font-medium text-gray-700 block mb-1">Cocas possíveis:</span>
+            <div className="text-lg sm:text-xl font-bold text-orange-600">
               {possibleCocas} unidades
             </div>
             <div className="text-xs text-gray-500 mt-1">
@@ -538,12 +533,12 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {ordersWithChange.map((order, orderIndex) => (
-          <div key={order.id} className="border-l-4 border-l-blue-500 pl-4">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800">
+          <div key={order.id} className="border-l-4 border-l-blue-500 pl-3 sm:pl-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
+              <div className="flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800">
                   {order.employeeName}
                 </h3>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -567,7 +562,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
               </div>
               <button
                 onClick={() => onRemoveOrder(orderIndex)}
-                className="text-red-600 hover:text-red-800 transition-colors"
+                className="text-red-600 hover:text-red-800 transition-colors self-start sm:self-center"
               >
                 <Trash2 size={16} />
               </button>
@@ -577,21 +572,22 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
               {order.items.map((item, itemIndex) => (
                 <div
                   key={itemIndex}
-                  className="flex justify-between items-center bg-gray-50 p-3 rounded-lg"
+                  className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-3 rounded-lg gap-2"
                 >
                   <div className="flex-1">
-                    <h4 className="font-medium text-gray-800">
+                    <h4 className="font-medium text-gray-800 text-sm sm:text-base">
                       {item.product.name}
                     </h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs sm:text-sm text-gray-600">
                       R$ {item.product.price.toFixed(2)} × {item.quantity}
                     </p>
                     {item.notes && (
                       <p className="text-xs text-gray-500 mt-1">{item.notes}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-semibold text-gray-800">
+                  <div className="flex items-center justify-between sm:justify-end">
+                    <span className="text-sm sm:hidden text-gray-600">Total:</span>
+                    <span className="font-semibold text-gray-800 text-sm sm:text-base">
                       R$ {(item.product.price * item.quantity).toFixed(2)}
                     </span>
                   </div>
@@ -601,8 +597,8 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
             <div className="mt-3 pt-3 border-t border-gray-200">
               <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-600">Subtotal:</span>
-                <span className="font-bold text-gray-800">
+                <span className="font-medium text-gray-600 text-sm sm:text-base">Subtotal:</span>
+                <span className="font-bold text-gray-800 text-sm sm:text-base">
                   R${" "}
                   {order.items
                     .reduce(
@@ -617,19 +613,19 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         ))}
       </div>
 
-      <div className="mt-6 pt-6 border-t-2 border-gray-200">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-xl font-bold text-gray-800">Total Geral:</span>
-          <span className="text-2xl font-bold text-green-600">
+      <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t-2 border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
+          <span className="text-lg sm:text-xl font-bold text-gray-800">Total Geral:</span>
+          <span className="text-xl sm:text-2xl font-bold text-green-600">
             R$ {total.toFixed(2)}
           </span>
         </div>
 
         <button
           onClick={sendWhatsAppMessage}
-          className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors text-lg font-semibold"
+          className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-3 px-4 sm:px-6 rounded-lg hover:bg-green-700 transition-colors text-base sm:text-lg font-semibold"
         >
-          <MessageCircle size={24} />
+          <MessageCircle size={20} className="sm:w-6 sm:h-6" />
           Finalizar Pedido no WhatsApp
         </button>
       </div>
@@ -637,14 +633,14 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
       {/* Email Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-md mx-4">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-base sm:text-lg font-semibold">
                 Enviar Relatório por Email
               </h3>
               <button
                 onClick={() => setShowEmailModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 p-1"
               >
                 <X size={20} />
               </button>
@@ -662,15 +658,15 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                 placeholder="exemplo@email.com"
               />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => setShowEmailModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
                 disabled={isLoading}
               >
                 Cancelar
@@ -678,7 +674,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
               <button
                 onClick={sendEmailWithPDF}
                 disabled={isLoading}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm sm:text-base"
               >
                 {isLoading ? "Enviando..." : "Enviar"}
               </button>

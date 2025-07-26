@@ -7,29 +7,15 @@ export const formatCurrency = (value: number): string => {
 
 export const generateWhatsAppMessage = (
   orders: EmployeeOrderData[],
-  sector: string,
-  totalChangeForCoca: number = 0,
-  possibleCocas: number = 0
+  sector: string
 ): string => {
   const today = new Date();
   const formattedDate = formatDate(today);
-  const isSaturday = today.getDay() === 6;
 
   let message = `🍽️ *PEDIDO DE LANCHE*\n`;
   message += `📅 Data: ${formattedDate}\n`;
   message += `🏢 Setor: ${sector}\n`;
-  message += `👥 Total de colaboradores: ${orders.length}\n`;
-
-  // Informações especiais para sábado
-  if (isSaturday && totalChangeForCoca > 0) {
-    message += `\n🥤 *SISTEMA DE TROCO - SÁBADO:*\n`;
-    message += `💰 Troco disponível: R$ ${totalChangeForCoca
-      .toFixed(2)
-      .replace(".", ",")}\n`;
-    message += `🥤 Cocas possíveis: ${possibleCocas} unidades\n`;
-  }
-
-  message += `\n📋 *RESUMO DOS ITENS:*\n`;
+  message += `👥 Total de colaboradores: ${orders.length}\n\n`;
 
   // Agregar todos os itens sem mostrar nomes ou preços
   const itemSummary: Record<string, number> = {};
