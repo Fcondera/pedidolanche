@@ -138,22 +138,6 @@ export const PRODUCTS: Product[] = [
     available: true,
   },
   {
-    id: "13b",
-    name: "Pastel de carne",
-    price: 6.5,
-    category: "food",
-    description: "Pastel frito recheado com carne",
-    available: true,
-  },
-  {
-    id: "13c",
-    name: "Pastel de pizza",
-    price: 6.5,
-    category: "food",
-    description: "Pastel frito recheado com pizza",
-    available: true,
-  },
-  {
     id: "14",
     name: "Sanduíche natural",
     price: 8.5,
