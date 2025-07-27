@@ -7,7 +7,9 @@ export const formatCurrency = (value: number): string => {
 
 export const generateWhatsAppMessage = (
   orders: EmployeeOrderData[],
-  sector: string
+  sector: string,
+  totalChangeForCoca: number = 0,
+  possibleCocas: number = 0
 ): string => {
   const today = new Date();
   const formattedDate = formatDate(today);
@@ -15,7 +17,15 @@ export const generateWhatsAppMessage = (
   let message = `🍽️ *PEDIDO DE LANCHE*\n`;
   message += `📅 Data: ${formattedDate}\n`;
   message += `🏢 Setor: ${sector}\n`;
-  message += `👥 Total de colaboradores: ${orders.length}\n\n`;
+  message += `👥 Total de colaboradores: ${orders.length}\n`;
+
+  // Informações sobre coca disponível
+  if (totalChangeForCoca > 0 && possibleCocas > 0) {
+    message += `\n🥤 *BEBIDAS ADICIONAIS:*\n`;
+    message += `🥤 Queremos ${possibleCocas} Coca-Cola\n`;
+  }
+
+  message += `\n📋 *RESUMO DOS ITENS:*\n`;
 
   // Agregar todos os itens sem mostrar nomes ou preços
   const itemSummary: Record<string, number> = {};

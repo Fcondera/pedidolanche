@@ -93,118 +93,230 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
   const generatePDF = () => {
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
 
-    // Header
-    doc.setFontSize(18);
-    doc.text("Relatório de Pedidos - Hennings", 20, 20);
+    // Header simples
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("RELATÓRIO DE PEDIDOS - HENNINGS", pageWidth / 2, 20, {
+      align: "center",
+    });
 
-    // Date and Sector
-    doc.setFontSize(11);
-    doc.text(`Data: ${formatDate(new Date())}`, 20, 32);
-    if (sector) {
-      doc.text(`Setor: ${sector}`, 20, 40);
-    }
+    // Informações básicas
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Data: ${formatDate(new Date())}`, 20, 35);
+    doc.text(`Setor: ${sector || "Não informado"}`, 20, 42);
+    doc.text(`Total Geral: R$ ${total.toFixed(2)}`, 20, 49);
 
-    // Table data
-    const tableData: Array<Array<string>> = [];
+    // Tabela simples - uma linha por item
+    const simpleTableData: string[][] = [];
 
     ordersWithChange.forEach((order) => {
-      // Add employee header with consolidated info
-      tableData.push([
-        `${order.employeeName} - ${
-          order.status === "pending"
-            ? "Pendente"
-            : order.status === "confirmed"
-            ? "Confirmado"
-            : "Cancelado"
-        }`,
-        "",
-        "",
-        "",
-      ]);
-
-      // Add items directly
       order.items.forEach((item) => {
-        tableData.push([
-          `  ${item.product.name}`,
+        simpleTableData.push([
+          order.employeeName,
+          item.product.name,
           `R$ ${item.product.price.toFixed(2)}`,
           item.quantity.toString(),
           `R$ ${(item.product.price * item.quantity).toFixed(2)}`,
         ]);
       });
-
-      // Add employee total
-      const employeeTotal = order.items.reduce(
-        (sum, item) => sum + item.product.price * item.quantity,
-        0
-      );
-      tableData.push([
-        `  Subtotal: ${order.employeeName}`,
-        "",
-        "",
-        `R$ ${employeeTotal.toFixed(2)}`,
-      ]);
-
-      // Add minimal spacing
-      tableData.push(["", "", "", ""]);
     });
-
-    // Remove last empty row
-    if (tableData.length > 0) {
-      tableData.pop();
-    }
-
-    // Add total
-    tableData.push(["TOTAL GERAL", "", "", `R$ ${total.toFixed(2)}`]);
 
     autoTable(doc, {
-      head: [["Funcionário / Item", "Preço Unit.", "Qtd", "Subtotal"]],
-      body: tableData,
-      startY: sector ? 48 : 40,
+      head: [["Funcionário", "Produto", "Preço Unit.", "Qtd", "Total"]],
+      body: simpleTableData,
+      startY: 60,
+      theme: "grid",
       styles: {
-        fontSize: 9,
-        cellPadding: 2,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1,
+        fontSize: 10,
+        cellPadding: 3,
+        lineColor: [0, 0, 0],
+        lineWidth: 0.3,
       },
       headStyles: {
-        fillColor: [41, 128, 185],
+        fillColor: [70, 130, 180],
         textColor: 255,
         fontStyle: "bold",
-        fontSize: 10,
       },
       columnStyles: {
-        0: { cellWidth: 80, halign: "left" },
-        1: { cellWidth: 30, halign: "right" },
-        2: { cellWidth: 20, halign: "center" },
-        3: { cellWidth: 35, halign: "right" },
+        0: { cellWidth: 40 }, // Funcionário
+        1: { cellWidth: 70 }, // Produto
+        2: { cellWidth: 25, halign: "right" }, // Preço Unit.
+        3: { cellWidth: 15, halign: "center" }, // Qtd
+        4: { cellWidth: 25, halign: "right" }, // Total
       },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      bodyStyles: {
-        fontSize: 9,
-      },
-      didParseCell: function (data) {
-        // Style employee headers
-        const cellText = data.cell.text[0] || "";
-        if (cellText.includes(" - ") && !cellText.startsWith("  ")) {
-          data.cell.styles.fillColor = [230, 230, 230];
-          data.cell.styles.fontStyle = "bold";
-        }
-        // Style subtotals
-        if (cellText.startsWith("  Subtotal:")) {
-          data.cell.styles.fillColor = [240, 240, 240];
-          data.cell.styles.fontStyle = "bold";
-        }
-        // Style total
-        if (cellText === "TOTAL GERAL") {
-          data.cell.styles.fillColor = [200, 200, 200];
-          data.cell.styles.fontStyle = "bold";
-          data.cell.styles.fontSize = 11;
-        }
-      },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
     });
+
+    // Resumo de Produtos Principais e Coca
+    let currentY =
+      (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+        .finalY + 20;
+
+    // Calcular resumo dos produtos
+    const productSummary: Record<string, number> = {};
+    ordersWithChange.forEach((order) => {
+      order.items.forEach((item) => {
+        productSummary[item.product.name] =
+          (productSummary[item.product.name] || 0) + item.quantity;
+      });
+    });
+
+    // Título do resumo
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("RESUMO DE PRODUTOS", 20, currentY);
+    currentY += 15;
+
+    // SEÇÃO 1: Informações da Coca (se houver troco)
+    if (totalChange > 0) {
+      const cocaData = [
+        ["Coca-Cola disponível", `${possibleCocas} unidades`],
+        ["Troco total acumulado", `R$ ${totalChange.toFixed(2)}`],
+        ["Restante após coca", `R$ ${remainingChange.toFixed(2)}`],
+      ];
+
+      autoTable(doc, {
+        head: [["SISTEMA DE COCA-COLA", "VALORES"]],
+        body: cocaData,
+        startY: currentY,
+        theme: "grid",
+        styles: {
+          fontSize: 10,
+          cellPadding: 4,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.3,
+        },
+        headStyles: {
+          fillColor: [255, 87, 34],
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 11,
+        },
+        columnStyles: {
+          0: { cellWidth: 70, fontStyle: "bold" },
+          1: { cellWidth: 50, halign: "right", fontStyle: "bold" },
+        },
+        alternateRowStyles: { fillColor: [255, 245, 238] },
+      });
+
+      currentY =
+        (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+          .finalY + 15;
+    }
+
+    // SEÇÃO 2: Produtos Principais
+    const produtosPrincipais = [
+      "Pastel de frango",
+      "Pastel de carne",
+      "Pastel de pizza",
+      "Pão de queijo",
+      "Misto quente",
+      "Misto quente com ovo",
+      "Sanduíche natural",
+      "Coxinha",
+      "Nega maluca",
+    ];
+
+    const produtosPrincipaisData: string[][] = [];
+    produtosPrincipais.forEach((produto) => {
+      const quantidade = productSummary[produto];
+      if (quantidade > 0) {
+        produtosPrincipaisData.push([produto, `${quantidade} unidades`]);
+      }
+    });
+
+    if (produtosPrincipaisData.length > 0) {
+      autoTable(doc, {
+        head: [["PRODUTOS PRINCIPAIS", "QUANTIDADE"]],
+        body: produtosPrincipaisData,
+        startY: currentY,
+        theme: "grid",
+        styles: {
+          fontSize: 10,
+          cellPadding: 4,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.3,
+        },
+        headStyles: {
+          fillColor: [76, 175, 80],
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 11,
+        },
+        columnStyles: {
+          0: { cellWidth: 70, fontStyle: "bold" },
+          1: { cellWidth: 50, halign: "right", fontStyle: "bold" },
+        },
+        alternateRowStyles: { fillColor: [245, 255, 245] },
+      });
+
+      currentY =
+        (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+          .finalY + 15;
+    }
+
+    // SEÇÃO 3: Outros Produtos (se houver)
+    const outrosProdutos = Object.entries(productSummary)
+      .filter(([nome]) => !produtosPrincipais.includes(nome))
+      .filter(([, qtd]) => qtd > 0)
+      .sort(([, a], [, b]) => b - a); // Ordenar por quantidade (maior primeiro)
+
+    if (outrosProdutos.length > 0) {
+      const outrosProdutosData = outrosProdutos.map(([nome, qtd]) => [
+        nome,
+        `${qtd} unidades`,
+      ]);
+
+      autoTable(doc, {
+        head: [["OUTROS PRODUTOS", "QUANTIDADE"]],
+        body: outrosProdutosData,
+        startY: currentY,
+        theme: "grid",
+        styles: {
+          fontSize: 10,
+          cellPadding: 4,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.3,
+        },
+        headStyles: {
+          fillColor: [158, 158, 158],
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 11,
+        },
+        columnStyles: {
+          0: { cellWidth: 70, fontStyle: "bold" },
+          1: { cellWidth: 50, halign: "right", fontStyle: "bold" },
+        },
+        alternateRowStyles: { fillColor: [248, 248, 248] },
+      });
+
+      currentY =
+        (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+          .finalY + 15;
+    }
+
+    // Total final
+    const finalY = currentY;
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(`TOTAL GERAL: R$ ${total.toFixed(2)}`, pageWidth / 2, finalY, {
+      align: "center",
+    });
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 100, 100);
+    doc.text(
+      `Relatório gerado em ${new Date().toLocaleString("pt-BR")}`,
+      pageWidth / 2,
+      doc.internal.pageSize.height - 10,
+      { align: "center" }
+    );
 
     return doc;
   };
@@ -447,7 +559,12 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   };
 
   const sendWhatsAppMessage = () => {
-    const message = generateWhatsAppMessage(ordersWithChange, sector);
+    const message = generateWhatsAppMessage(
+      ordersWithChange,
+      sector,
+      totalChange,
+      possibleCocas
+    );
     const whatsappURL = `https://api.whatsapp.com/send?text=${encodeURIComponent(
       message
     )}`;
@@ -465,7 +582,9 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   return (
     <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Resumo dos Pedidos</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+          Resumo dos Pedidos
+        </h2>
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={downloadPDF}
@@ -516,13 +635,17 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
             </div>
           </div>
           <div className="bg-white p-3 rounded-lg">
-            <span className="font-medium text-gray-700 block mb-1">Troco total:</span>
+            <span className="font-medium text-gray-700 block mb-1">
+              Troco total:
+            </span>
             <div className="text-lg sm:text-xl font-bold text-blue-600">
               R$ {totalChange.toFixed(2)}
             </div>
           </div>
           <div className="bg-white p-3 rounded-lg sm:col-span-2 lg:col-span-1">
-            <span className="font-medium text-gray-700 block mb-1">Cocas possíveis:</span>
+            <span className="font-medium text-gray-700 block mb-1">
+              Cocas possíveis:
+            </span>
             <div className="text-lg sm:text-xl font-bold text-orange-600">
               {possibleCocas} unidades
             </div>
@@ -535,7 +658,10 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
       <div className="space-y-4 sm:space-y-6">
         {ordersWithChange.map((order, orderIndex) => (
-          <div key={order.id} className="border-l-4 border-l-blue-500 pl-3 sm:pl-4">
+          <div
+            key={order.id}
+            className="border-l-4 border-l-blue-500 pl-3 sm:pl-4"
+          >
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
               <div className="flex-1">
                 <h3 className="text-base sm:text-lg font-semibold text-gray-800">
@@ -586,7 +712,9 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
                     )}
                   </div>
                   <div className="flex items-center justify-between sm:justify-end">
-                    <span className="text-sm sm:hidden text-gray-600">Total:</span>
+                    <span className="text-sm sm:hidden text-gray-600">
+                      Total:
+                    </span>
                     <span className="font-semibold text-gray-800 text-sm sm:text-base">
                       R$ {(item.product.price * item.quantity).toFixed(2)}
                     </span>
@@ -597,7 +725,9 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
             <div className="mt-3 pt-3 border-t border-gray-200">
               <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-600 text-sm sm:text-base">Subtotal:</span>
+                <span className="font-medium text-gray-600 text-sm sm:text-base">
+                  Subtotal:
+                </span>
                 <span className="font-bold text-gray-800 text-sm sm:text-base">
                   R${" "}
                   {order.items
@@ -615,7 +745,9 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
       <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t-2 border-gray-200">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
-          <span className="text-lg sm:text-xl font-bold text-gray-800">Total Geral:</span>
+          <span className="text-lg sm:text-xl font-bold text-gray-800">
+            Total Geral:
+          </span>
           <span className="text-xl sm:text-2xl font-bold text-green-600">
             R$ {total.toFixed(2)}
           </span>
